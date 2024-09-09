@@ -5,19 +5,20 @@ from fastapi import HTTPException
 import pytest
 import asynctest
 
-import main
-from main import get_weather, store_weather_data, log_weather_event, get_cached_weather_data
+import local_backend
+from main import get_weather
+from local_backend import store_weather_data, log_weather_event, get_cached_weather_data
 
 
 @pytest.mark.asyncio
 class TestWeatherAPIService(asynctest.TestCase):
     def setUp(self):
         super().setUp()
-        if os.path.exists(main.CACHE_DIR):
-            shutil.rmtree(main.CACHE_DIR)
-            os.mkdir(main.CACHE_DIR)
-        if os.path.exists(main.LOG_FILE):
-            os.remove(main.LOG_FILE)
+        if os.path.exists(local_backend.CACHE_DIR):
+            shutil.rmtree(local_backend.CACHE_DIR)
+            os.mkdir(local_backend.CACHE_DIR)
+        if os.path.exists(local_backend.LOG_FILE):
+            os.remove(local_backend.LOG_FILE)
 
 
     @asynctest.patch('main.fetch_weather_data')
@@ -62,7 +63,7 @@ class TestWeatherAPIService(asynctest.TestCase):
         assert exc_info.value.status_code == 404
         assert exc_info.value.detail == "City not found"
 
-    @asynctest.patch('main.log_weather_event')
+    @asynctest.patch('local_backend.log_weather_event')
     async def test_log_weather_event_concurrent_writes(self, mock_log_event):
         city = "London"
         filepath = "test_file.json"
@@ -70,7 +71,7 @@ class TestWeatherAPIService(asynctest.TestCase):
         # Simulate multiple concurrent requests trying to log the same event
         await log_weather_event(city, filepath),
 
-        with open(main.LOG_FILE) as file:
+        with open(local_backend.LOG_FILE) as file:
             log_file = json.load(file)
             assert log_file[0]['city'] == city
             assert log_file[0]['filepath'] == filepath
