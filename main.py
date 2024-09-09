@@ -1,11 +1,12 @@
 from fastapi import FastAPI, HTTPException
 from aiohttp import ClientSession
-import asyncio
 import aiofiles
 from datetime import datetime, timedelta
 import os
 import json
 from pathlib import Path
+from aiofiles.os import wrap
+from fcntl import flock, LOCK_EX, LOCK_UN
 
 app = FastAPI()
 
@@ -15,6 +16,7 @@ API_KEY = "01572c89d3ca9de06928a54b69e523b9"
 CACHE_DIR = Path("./weather_cache")
 CACHE_DIR.mkdir(exist_ok=True)
 CACHE_EXPIRY = timedelta(minutes=5)
+LOG_FILE = "weather_log.json"
 
 async def fetch_weather_data(city: str) -> dict:
     params = {"q": city, "appid": API_KEY}
@@ -34,8 +36,12 @@ async def store_weather_data(city: str, data: dict) -> str:
     return str(filepath)
 
 
+@wrap
+def file_lock(file, operation):
+    return flock(file.fileno(), operation)
+
 async def log_weather_event(city: str, filepath: str):
-    log_file = "weather_log.json"
+    log_file = LOG_FILE
     event = {
         "city": city,
         "timestamp": datetime.utcnow().isoformat(),
@@ -43,14 +49,20 @@ async def log_weather_event(city: str, filepath: str):
     }
     if os.path.exists(log_file):
         async with aiofiles.open(log_file, "r+") as file:
+            await file_lock(file, LOCK_EX)
+            await file.seek(0)
             content = await file.read()
             log_data = json.loads(content) if content else []
             log_data.append(event)
-            file.seek(0)
+            await file.seek(0)
             await file.write(json.dumps(log_data))
+            await file.truncate()
+            await file_lock(file, LOCK_UN)
     else:
         async with aiofiles.open(log_file, "w") as file:
+            await file_lock(file, LOCK_EX)
             await file.write(json.dumps([event]))
+            await file_lock(file, LOCK_UN)
 
 async def get_cached_weather_data(city: str) -> dict:
     now = datetime.utcnow()
