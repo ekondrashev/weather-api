@@ -1,0 +1,6 @@
+fastapi
+uvicorn
+aiohttp
+boto3
+aiobotocore
+aiofiles
